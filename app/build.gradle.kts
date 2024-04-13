@@ -241,7 +241,7 @@ dependencies {
     implementation(libs.logcat)
 
     // Crash reports/analytics
-    "standardImplementation"(libs.firebase.analytics)
+    // "standardImplementation"(libs.firebase.analytics)
 
     // Shizuku
     implementation(libs.bundles.shizuku)
