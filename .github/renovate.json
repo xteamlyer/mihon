@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices"
+  ],
+  "forkProcessing": "enabled",
+  "autodiscover": true,
+  "branchConcurrentLimit": 0,
+  "enabled": true,
+  "git-submodules": {
+    "enabled": true
+  },
+  "ignoreDeprecated": false,
+  "ignoreUnstable": false,
+  "includeMirrors": true,
+  "prConcurrentLimit": 0,
+  "prHourlyLimit": 0,
+  "dependencyDashboard": true
+}
