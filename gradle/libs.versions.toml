@@ -1,6 +1,6 @@
 [versions]
 aboutlib_version = "11.1.4"
-leakcanary = "2.14"
+leakcanary = "3.0-alpha-2"
 moko = "0.23.0"
 okhttp_version = "5.0.0-alpha.12"
 richtext = "0.20.0"
