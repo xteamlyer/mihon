@@ -7,7 +7,7 @@ richtext = "0.20.0"
 shizuku_version = "12.2.0"
 sqldelight = "2.0.2"
 sqlite = "2.5.0-alpha01"
-voyager = "1.0.0"
+voyager = "1.1.0-alpha04"
 detekt = "1.23.6"
 detektCompose = "0.3.12"
 
