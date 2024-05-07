@@ -1,6 +1,6 @@
 [versions]
 agp_version = "8.5.0-alpha08"
-lifecycle_version = "2.7.0"
+lifecycle_version = "2.8.0-rc01"
 paging_version = "3.3.0-rc01"
 
 [libraries]
