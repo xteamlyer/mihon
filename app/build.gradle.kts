@@ -154,7 +154,7 @@ dependencies {
     implementation(compose.material.icons)
     implementation(compose.animation)
     implementation(compose.animation.graphics)
-    debugImplementation(compose.ui.tooling)
+    implementation(compose.ui.tooling)
     implementation(compose.ui.tooling.preview)
     implementation(compose.ui.util)
     implementation(compose.accompanist.systemuicontroller)
@@ -238,9 +238,6 @@ dependencies {
 
     // Logging
     implementation(libs.logcat)
-
-    // Crash reports/analytics
-    "standardImplementation"(libs.firebase.analytics)
 
     // Shizuku
     implementation(libs.bundles.shizuku)
