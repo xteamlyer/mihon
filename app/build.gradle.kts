@@ -67,9 +67,8 @@ android {
 
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks.add("release")
-            val debugType = getByName("debug")
-            versionNameSuffix = debugType.versionNameSuffix
-            applicationIdSuffix = debugType.applicationIdSuffix
+            isDebuggable = false
+            isProfileable = true
         }
         create("benchmark") {
             initWith(getByName("release"))
@@ -238,9 +237,6 @@ dependencies {
 
     // Logging
     implementation(libs.logcat)
-
-    // Crash reports/analytics
-    "standardImplementation"(libs.firebase.analytics)
 
     // Shizuku
     implementation(libs.bundles.shizuku)
