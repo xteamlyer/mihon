@@ -67,8 +67,11 @@ class BackupRestorer(
         val backupMaps = backup.backupSources + backup.backupBrokenSources.map { it.toBackupSource() }
         sourceMapping = backupMaps.associate { it.sourceId to it.name }
 
-        if (options.library) {
-            restoreAmount += backup.backupManga.size + 1 // +1 for categories
+        if (options.libraryEntries) {
+            restoreAmount += backup.backupManga.size
+        }
+        if (options.categories) {
+            restoreAmount += 1
         }
         if (options.appSettings) {
             restoreAmount += 1
@@ -78,7 +81,7 @@ class BackupRestorer(
         }
 
         coroutineScope {
-            if (options.library) {
+            if (options.categories) {
                 restoreCategories(backup.backupCategories)
             }
             if (options.appSettings) {
@@ -87,8 +90,8 @@ class BackupRestorer(
             if (options.sourceSettings) {
                 restoreSourcePreferences(backup.backupSourcePreferences)
             }
-            if (options.library) {
-                restoreManga(backup.backupManga, backup.backupCategories)
+            if (options.libraryEntries) {
+                restoreManga(backup.backupManga, if (options.categories) backup.backupCategories else emptyList())
             }
 
             // TODO: optionally trigger online library + tracker update
@@ -97,7 +100,7 @@ class BackupRestorer(
 
     private fun CoroutineScope.restoreCategories(backupCategories: List<BackupCategory>) = launch {
         ensureActive()
-        categoriesRestorer.restoreCategories(backupCategories)
+        categoriesRestorer(backupCategories)
 
         restoreProgress += 1
         notifier.showRestoreProgress(
@@ -117,7 +120,7 @@ class BackupRestorer(
                 ensureActive()
 
                 try {
-                    mangaRestorer.restoreManga(it, backupCategories)
+                    mangaRestorer.restore(it, backupCategories)
                 } catch (e: Exception) {
                     val sourceName = sourceMapping[it.source] ?: it.source.toString()
                     errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
@@ -130,7 +133,7 @@ class BackupRestorer(
 
     private fun CoroutineScope.restoreAppPreferences(preferences: List<BackupPreference>) = launch {
         ensureActive()
-        preferenceRestorer.restoreAppPreferences(preferences)
+        preferenceRestorer.restoreApp(preferences)
 
         restoreProgress += 1
         notifier.showRestoreProgress(
@@ -143,7 +146,7 @@ class BackupRestorer(
 
     private fun CoroutineScope.restoreSourcePreferences(preferences: List<BackupSourcePreferences>) = launch {
         ensureActive()
-        preferenceRestorer.restoreSourcePreferences(preferences)
+        preferenceRestorer.restoreSource(preferences)
 
         restoreProgress += 1
         notifier.showRestoreProgress(
