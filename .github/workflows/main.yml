@@ -1,0 +1,66 @@
+name: Build
+on:
+  push:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  get_tag:
+    name: Extract tag name
+    runs-on: 'ubuntu-24.04'
+    outputs:
+      tag: ${{ steps.extract.outputs.tag }}
+
+    steps:
+      - name: Get tag name
+        id: extract
+        run: echo "tag=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+  build:
+    name: Build (${{ matrix.build_type }})
+    runs-on: 'ubuntu-24.04'
+    needs: get_tag
+    strategy:
+      matrix:
+        build_type: [release, preview, foss]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Set up JDK
+        uses: actions/setup-java@main
+        with:
+          java-version-file: .github/.java-version
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@main
+
+      - name: Build ${{ matrix.build_type }}
+        run: ./gradlew assemble${{ matrix.build_type }}
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@master
+        with:
+          releaseDirectory: app/build/outputs/apk/${{ matrix.build_type }}
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: '35.0.1'
+
+
+      - name: Upload ${{ matrix.build_type }}
+        uses: actions/upload-artifact@main
+        with:
+          name: Mihon-${{ matrix.build_type }}
+          path: app/build/outputs/apk/${{ matrix.build_type }}/app-universal-${{ matrix.build_type }}-unsigned-signed.apk
+

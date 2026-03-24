@@ -147,7 +147,7 @@ object SettingsReaderScreen : SearchableSettings {
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = flashInterval,
-                    valueRange = 1..10,
+                    valueRange = 1..20,
                     title = stringResource(MR.strings.pref_flash_page_interval),
                     valueString = pluralStringResource(MR.plurals.pref_pages, flashInterval, flashInterval),
                     enabled = flashPageState,

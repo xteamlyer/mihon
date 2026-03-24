@@ -27,7 +27,7 @@ android {
         applicationId = "app.mihon"
 
         versionCode = 19
-        versionName = "0.19.5"
+        versionName = "0.19.7"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getLatestCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getLatestCommitSha()}\"")
@@ -58,19 +58,16 @@ android {
         create("foss") {
             initWith(release)
 
-            applicationIdSuffix = ".foss"
-
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }
         create("preview") {
             initWith(release)
 
-            applicationIdSuffix = ".debug"
-
             versionNameSuffix = debug.versionNameSuffix
-            signingConfig = debug.signingConfig
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
+            isDebuggable = false
+            isProfileable = true
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLatestCommitTime = false)}\"")
         }
@@ -187,7 +184,7 @@ dependencies {
     implementation(libs.androidx.compose.materialIcons)
     implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.compose.animationGraphics)
-    debugImplementation(libs.androidx.compose.uiTooling)
+    implementation(libs.androidx.compose.uiTooling)
     implementation(libs.androidx.compose.uiToolingPreview)
     implementation(libs.androidx.compose.uiUtil)
 
