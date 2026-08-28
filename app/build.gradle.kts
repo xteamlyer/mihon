@@ -88,16 +88,16 @@ android {
         create("foss") {
             initWith(release)
 
-            applicationIdSuffix = ".foss"
-
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }
         create("nightly") {
             initWith(release)
 
-            applicationIdSuffix = ".debug"
-
             matchingFallbacks.addAll(commonMatchingFallbacks)
+
+            isDebuggable = false
+            
+            isProfileable = true
         }
         create("benchmark") {
             initWith(release)
