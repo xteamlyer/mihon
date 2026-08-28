@@ -147,7 +147,7 @@ internal fun ColumnScope.GeneralPage(viewModel: ReaderSettingsViewModel) {
         )
         SliderItem(
             value = flashInterval,
-            valueRange = 1..10,
+            valueRange = 1..20,
             label = stringResource(MR.strings.pref_flash_page_interval),
             valueString = pluralStringResource(MR.plurals.pref_pages, flashInterval, flashInterval),
             onChange = {

@@ -96,18 +96,16 @@ android {
         create("foss") {
             initWith(release)
 
-            applicationIdSuffix = ".foss"
-
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }
         create("nightly") {
             initWith(release)
 
-            applicationIdSuffix = ".debug"
-
             versionNameSuffix = debug.versionNameSuffix
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
+            isDebuggable = false
+            isProfileable = true
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLatestCommitTime = false)}\"")
         }
