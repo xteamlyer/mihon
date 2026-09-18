@@ -31,7 +31,11 @@ jobs:
     needs: get_tag
     strategy:
       matrix:
-        build_type: [release, nightly, foss]
+        build_type: [
+          # release, 
+          nightly
+          # foss
+          ]
 
     steps:
       - name: Checkout
