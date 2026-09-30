@@ -94,7 +94,7 @@ class MetadataUpdateWorker(context: Context, workerParams: WorkerParameters) :
      */
     private suspend fun addMangaToQueue() {
         mangaToUpdate = getLibraryManga.await()
-        notifier.showQueueSizeWarningNotificationIfNeeded(mangaToUpdate)
+        // notifier.showQueueSizeWarningNotificationIfNeeded(mangaToUpdate)
     }
 
     private suspend fun updateMetadata() {
