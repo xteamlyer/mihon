@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
+import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.tachiyomi.data.cache.ChapterCache
-import eu.kanade.tachiyomi.data.database.models.toDomainChapter
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -30,6 +30,7 @@ internal class HttpPageLoader(
     private val chapter: ReaderChapter,
     private val source: HttpSource,
     private val chapterCache: ChapterCache,
+    private val appScope: CoroutineScope,
 ) : PageLoader() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -66,12 +67,12 @@ internal class HttpPageLoader(
      */
     override suspend fun getPages(): List<ReaderPage> {
         val pages = try {
-            chapterCache.getPageListFromCache(chapter.chapter.toDomainChapter()!!)
+            chapterCache.getPageListFromCache(chapter.chapter)
         } catch (e: Throwable) {
             if (e is CancellationException) {
                 throw e
             }
-            source.getPageList(chapter.chapter)
+            source.getPageList(chapter.chapter.toSChapter())
         }
         return pages.mapIndexed { index, page ->
             // Don't trust sources and use our own indexing
@@ -132,11 +133,11 @@ internal class HttpPageLoader(
 
         // Cache current page list progress for online chapters to allow a faster reopen
         chapter.pages?.let { pages ->
-            launchIO {
+            appScope.launchIO {
                 try {
                     // Convert to pages without reader information
                     val pagesToSave = pages.map { Page(it.index, it.url, it.imageUrl) }
-                    chapterCache.putPageListToCache(chapter.chapter.toDomainChapter()!!, pagesToSave)
+                    chapterCache.putPageListToCache(chapter.chapter, pagesToSave)
                 } catch (e: Throwable) {
                     if (e is CancellationException) {
                         throw e

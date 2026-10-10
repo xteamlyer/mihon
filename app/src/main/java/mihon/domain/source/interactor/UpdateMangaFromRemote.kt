@@ -22,6 +22,7 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.isLocal
 import kotlin.time.Clock
+import kotlin.time.Instant
 
 @Inject
 class UpdateMangaFromRemote(
@@ -38,7 +39,7 @@ class UpdateMangaFromRemote(
         fetchDetails: Boolean = false,
         fetchChapters: Boolean = false,
         manualFetch: Boolean = false,
-        fetchWindow: Pair<Long, Long> = Pair(0, 0),
+        fetchWindow: ClosedRange<Instant>? = null,
     ): Result<RemoteMangaUpdate> {
         val source = sourceManager.getOrStub(manga.source)
         return invoke(
@@ -56,7 +57,7 @@ class UpdateMangaFromRemote(
         fetchDetails: Boolean = false,
         fetchChapters: Boolean = false,
         manualFetch: Boolean = false,
-        fetchWindow: Pair<Long, Long> = Pair(0, 0),
+        fetchWindow: ClosedRange<Instant>? = null,
     ): Result<RemoteMangaUpdate> {
         return try {
             val chapters = chapterRepository.getChapterByMangaId(manga.id)
@@ -69,7 +70,7 @@ class UpdateMangaFromRemote(
                     fetchChapters = fetchChapters,
                 )
             }
-            awaitUpdateFromSource(manga, update.manga, manualFetch)
+            awaitUpdateFromSource(manga, update.manga, fetchDetails, manualFetch)
             val newChapters = syncChaptersWithSource.await(
                 rawSourceChapters = update.chapters,
                 manga = manga,
@@ -89,6 +90,7 @@ class UpdateMangaFromRemote(
     private suspend fun awaitUpdateFromSource(
         localManga: Manga,
         remoteManga: SManga,
+        fetchDetails: Boolean,
         manualFetch: Boolean,
     ): Boolean {
         val remoteTitle = try {
@@ -109,14 +111,14 @@ class UpdateMangaFromRemote(
             // Never refresh covers if the url is empty to avoid "losing" existing covers
             remoteManga.thumbnail_url.isNullOrEmpty() -> null
             !manualFetch && localManga.thumbnailUrl == remoteManga.thumbnail_url -> null
-            localManga.isLocal() -> Clock.System.now().toEpochMilliseconds()
+            localManga.isLocal() -> Clock.System.now()
             localManga.hasCustomCover(coverCache) -> {
                 coverCache.deleteFromCache(localManga, false)
                 null
             }
             else -> {
                 coverCache.deleteFromCache(localManga, false)
-                Clock.System.now().toEpochMilliseconds()
+                Clock.System.now()
             }
         }
 
@@ -134,7 +136,7 @@ class UpdateMangaFromRemote(
                 thumbnailUrl = thumbnailUrl,
                 status = remoteManga.status.toLong(),
                 updateStrategy = remoteManga.update_strategy,
-                initialized = true,
+                initialized = localManga.initialized || fetchDetails,
                 memo = remoteManga.memo,
             ),
         )

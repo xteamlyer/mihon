@@ -17,7 +17,7 @@ import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metrox.viewmodel.ViewModelAssistedFactory
 import dev.zacsweers.metrox.viewmodel.ViewModelAssistedFactoryKey
 import eu.kanade.domain.base.BasePreferences
-import eu.kanade.domain.chapter.model.toDbChapter
+import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.readerOrientation
@@ -27,7 +27,6 @@ import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
-import eu.kanade.tachiyomi.data.database.models.toDomainChapter
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
@@ -55,6 +54,7 @@ import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
+import mihon.core.metro.AppCoroutineScope
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -77,6 +78,7 @@ import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.domain.download.service.DownloadPreferences
@@ -89,8 +91,8 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.image.LocalCoverManager
 import tachiyomi.source.local.isLocal
-import java.util.Date
 import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * Presenter used by the activity to perform background operations.
@@ -98,6 +100,7 @@ import kotlin.time.Clock
 @AssistedInject
 class ReaderViewModel(
     @Assisted private val savedState: SavedStateHandle,
+    @AppCoroutineScope private val appScope: CoroutineScope,
     private val context: Context,
     private val sourceManager: SourceManager,
     private val downloadManager: DownloadManager,
@@ -186,7 +189,7 @@ class ReaderViewModel(
     /**
      * The time the chapter was started reading
      */
-    private var chapterReadStartTime: Long? = null
+    private var chapterReadStartTime: Instant? = null
 
     private var chapterToDownload: Download? = null
 
@@ -273,7 +276,6 @@ class ReaderViewModel(
                     this
                 }
             }
-            .map { it.toDbChapter() }
             .map(::ReaderChapter)
     }
 
@@ -290,9 +292,9 @@ class ReaderViewModel(
                     // Restore from SavedState
                     currentChapter.requestedPage = chapterPageIndex
                 } else if (!currentChapter.chapter.read) {
-                    currentChapter.requestedPage = currentChapter.chapter.last_page_read
+                    currentChapter.requestedPage = currentChapter.chapter.lastPageRead
                 }
-                chapterId = currentChapter.chapter.id!!
+                chapterId = currentChapter.chapter.id
             }
             .launchIn(viewModelScope)
 
@@ -333,7 +335,15 @@ class ReaderViewModel(
                 mutableState.update { it.copy(manga = manga, source = source) }
                 if (chapterId == -1L) chapterId = initialChapterId
 
-                loader = ChapterLoader(context, downloadManager, downloadProvider, chapterCache, manga, source)
+                loader = ChapterLoader(
+                    context,
+                    downloadManager,
+                    downloadProvider,
+                    chapterCache,
+                    appScope,
+                    manga,
+                    source,
+                )
 
                 loadChapter(loader!!, chapterList.first { chapterId == it.chapter.id })
             } catch (e: Throwable) {
@@ -523,9 +533,9 @@ class ReaderViewModel(
             )
             if (!isNextChapterDownloaded) return@launchIO
 
-            val chaptersToDownload = getNextChapters.await(manga.id, nextChapter.id!!).run {
+            val chaptersToDownload = getNextChapters.await(manga.id, nextChapter.id).run {
                 if (readerPreferences.skipDupe.get()) {
-                    removeDuplicates(nextChapter.toDomainChapter()!!)
+                    removeDuplicates(nextChapter)
                 } else {
                     this
                 }
@@ -543,7 +553,7 @@ class ReaderViewModel(
      * if setting is enabled and [currentChapter] is queued for download
      */
     private fun cancelQueuedDownloads(currentChapter: ReaderChapter): Download? {
-        return downloadManager.getQueuedDownloadOrNull(currentChapter.chapter.id!!)?.also {
+        return downloadManager.getQueuedDownloadOrNull(currentChapter.chapter.id)?.also {
             downloadManager.cancelQueuedDownloads(listOf(it))
         }
     }
@@ -564,9 +574,23 @@ class ReaderViewModel(
         // If chapter is completely read, no need to download it
         chapterToDownload = null
 
-        if (chapterToDelete != null) {
-            enqueueDeleteReadChapters(chapterToDelete)
+        if (chapterToDelete == null || !chapterToDelete.chapter.read) return
+
+        val markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead.get()
+            .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_EXISTING)
+        val duplicateChapters = if (markDuplicateAsRead) {
+            unfilteredChapterList
+                .filter {
+                    it.id != chapterToDelete.chapter.id &&
+                        it.isRecognizedNumber &&
+                        it.chapterNumber == chapterToDelete.chapter.chapterNumber
+                }
+                // The list is loaded once, before these were marked read along with chapterToDelete
+                .map { it.copy(read = true) }
+        } else {
+            emptyList()
         }
+        enqueueDeleteChapters(listOf(chapterToDelete.chapter) + duplicateChapters)
     }
 
     /**
@@ -583,23 +607,23 @@ class ReaderViewModel(
         chapterPageIndex = pageIndex
 
         if (!incognitoMode && page.status !is Page.State.Error) {
-            readerChapter.chapter.last_page_read = pageIndex
+            val read = readerChapter.chapter.read || readerChapter.pages?.lastIndex == pageIndex
+            readerChapter.update { it.copy(lastPageRead = pageIndex, read = read) }
 
             if (readerChapter.pages?.lastIndex == pageIndex) {
                 updateChapterProgressOnComplete(readerChapter)
             }
 
             updateChapter.await(
-                ChapterUpdate(readerChapter.chapter.id!!) {
-                    read = readerChapter.chapter.read
-                    lastPageRead = readerChapter.chapter.last_page_read.toLong()
+                ChapterUpdate(readerChapter.chapter.id) {
+                    this.read = read
+                    lastPageRead = pageIndex
                 },
             )
         }
     }
 
     private suspend fun updateChapterProgressOnComplete(readerChapter: ReaderChapter) {
-        readerChapter.chapter.read = true
         updateTrackChapterRead(readerChapter)
         deleteChapterIfNeeded(readerChapter)
 
@@ -612,7 +636,7 @@ class ReaderViewModel(
                 if (
                     !chapter.read &&
                     chapter.isRecognizedNumber &&
-                    chapter.chapterNumber.toFloat() == readerChapter.chapter.chapter_number
+                    chapter.chapterNumber == readerChapter.chapter.chapterNumber
                 ) {
                     ChapterUpdate(chapter.id) { read = true }
                 } else {
@@ -623,7 +647,7 @@ class ReaderViewModel(
     }
 
     fun restartReadTimer() {
-        chapterReadStartTime = Clock.System.now().toEpochMilliseconds()
+        chapterReadStartTime = Clock.System.now()
     }
 
     /**
@@ -633,9 +657,9 @@ class ReaderViewModel(
         getCurrentChapter()?.let { readerChapter ->
             if (incognitoMode) return@let
 
-            val chapterId = readerChapter.chapter.id!!
-            val endTime = Date()
-            val sessionReadDuration = chapterReadStartTime?.let { endTime.time - it } ?: 0
+            val chapterId = readerChapter.chapter.id
+            val endTime = Clock.System.now()
+            val sessionReadDuration = chapterReadStartTime?.let { (endTime - it).inWholeMilliseconds } ?: 0
             chapterReadStartTime = null
 
             upsertHistory.await(HistoryUpdate(chapterId, endTime, sessionReadDuration))
@@ -668,7 +692,7 @@ class ReaderViewModel(
     fun getSource() = state.value.source as? HttpSource
 
     fun getChapterUrl(): String? {
-        val sChapter = getCurrentChapter()?.chapter ?: return null
+        val sChapter = getCurrentChapter()?.chapter?.toSChapter() ?: return null
         val source = getSource() ?: return null
 
         return try {
@@ -683,13 +707,13 @@ class ReaderViewModel(
      * Bookmarks the currently active chapter.
      */
     fun toggleChapterBookmark() {
-        val chapter = getCurrentChapter()?.chapter ?: return
-        val bookmarked = !chapter.bookmark
-        chapter.bookmark = bookmarked
+        val readerChapter = getCurrentChapter() ?: return
+        val bookmarked = !readerChapter.chapter.bookmark
+        readerChapter.update { it.copy(bookmark = bookmarked) }
 
         viewModelScope.launchNonCancellable {
             updateChapter.await(
-                ChapterUpdate(chapter.id!!) {
+                ChapterUpdate(readerChapter.chapter.id) {
                     bookmark = bookmarked
                 },
             )
@@ -725,7 +749,7 @@ class ReaderViewModel(
             if (currChapters != null) {
                 // Save current page
                 val currChapter = currChapters.currChapter
-                currChapter.requestedPage = currChapter.chapter.last_page_read
+                currChapter.requestedPage = currChapter.chapter.lastPageRead
 
                 mutableState.update {
                     it.copy(
@@ -761,7 +785,7 @@ class ReaderViewModel(
             if (currChapters != null) {
                 // Save current page
                 val currChapter = currChapters.currChapter
-                currChapter.requestedPage = currChapter.chapter.last_page_read
+                currChapter.requestedPage = currChapter.chapter.lastPageRead
 
                 mutableState.update {
                     it.copy(
@@ -954,20 +978,19 @@ class ReaderViewModel(
         val manga = manga ?: return
 
         viewModelScope.launchNonCancellable {
-            trackChapter.await(context, manga.id, readerChapter.chapter.chapter_number.toDouble())
+            trackChapter.await(context, manga.id, readerChapter.chapter.chapterNumber)
         }
     }
 
     /**
-     * Enqueues this [chapter] to be deleted when [deletePendingChapters] is called. The download
-     * manager handles persisting it across process deaths.
+     * Enqueues these [chapters] to be deleted when [deletePendingChapters] is called. The download
+     * manager handles persisting them across process deaths.
      */
-    private fun enqueueDeleteReadChapters(chapter: ReaderChapter) {
-        if (!chapter.chapter.read) return
+    private fun enqueueDeleteChapters(chapters: List<Chapter>) {
         val manga = manga ?: return
 
         viewModelScope.launchNonCancellable {
-            downloadManager.enqueueChaptersToDelete(listOf(chapter.chapter.toDomainChapter()!!), manga)
+            downloadManager.enqueueChaptersToDelete(chapters, manga)
         }
     }
 
